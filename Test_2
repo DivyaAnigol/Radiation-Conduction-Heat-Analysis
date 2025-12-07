@@ -1,0 +1,314 @@
+%RT4(111b) Radiation + Conduction (VF)
+
+clc; clear; close all;
+
+% Chamber dimensions
+L = -250:250;
+W = -250:250;
+H = 500;
+
+%% Material Properties
+PA12 = struct('name', 'PA12 Powder', ...
+              'color', [0.6 0.6 0.6], ...
+              'reflectivity', 0.05, ...
+              'emissivity', 0.46);
+SS = struct('name', 'Polished Stainless Steel', ...
+            'color', [0.8 0.8 0.8], ...
+            'reflectivity', 0.85, ...
+            'emissivity', 0.15);
+
+%% Chamber Cube
+corners = [
+    -250 -250 0;
+     250 -250 0;
+     250  250 0;
+    -250  250 0;
+    -250 -250 500;
+     250 -250 500;
+     250  250 500;
+    -250  250 500
+];
+faces = {
+    struct('verts', [1 2 3 4], 'material', PA12);
+    struct('verts', [1 2 6 5], 'material', SS);
+    struct('verts', [2 3 7 6], 'material', SS);
+    struct('verts', [3 4 8 7], 'material', SS);
+    struct('verts', [4 1 5 8], 'material', SS);
+};
+figure; hold on; axis equal;
+xlabel('X'); ylabel('Y'); zlabel('Z');
+title('3D Chamber with Cylindrical IR Heaters');
+view(3); grid on;
+for i = 1:length(faces)
+    f = faces{i};
+    patch('Vertices', corners, 'Faces', f.verts, ...
+          'FaceColor', f.material.color, ...
+          'FaceAlpha', 1, 'EdgeColor', 'k');
+end
+
+%% Top frame with central pocket
+top_strips = {
+    [-250 250 250 -250], [-250 -250 -150 -150];
+    [-250 250 250 -250], [150 150 250 250];
+    [-250 -150 -150 -250], [-250 -250 250 250];
+    [150 250 250 150], [-250 -250 250 250];
+};
+for i = 1:length(top_strips)
+    x = top_strips{i,1};
+    y = top_strips{i,2};
+    patch(x, y, H * ones(1, 4), SS.color, ...
+          'FaceAlpha', 0, 'EdgeColor', 'k');
+end
+line([-150, 150, 150, 150, -150, -150], [-150, -150, -150, 150, 150, -150], ...
+     H * ones(1, 6), 'Color', 'b', 'LineWidth', 1.5, 'LineStyle', '--');
+
+%% IR Heaters (cylindrical, half ceramic-coated)
+heater_radius = 6; % mm
+heater_height = H - 15;
+heater_length = 150; % mm
+offset = 100; % mm
+heater_lines = [
+    -offset, -220, heater_height, -offset + heater_length, -220, heater_height;
+    offset - heater_length, -180, heater_height,  offset, -180, heater_height;
+    220, -offset, heater_height, 220, -offset + heater_length, heater_height;
+    180, offset - heater_length, heater_height, 180, offset, heater_height;
+    offset, 220, heater_height,  offset - heater_length, 220, heater_height;
+    -offset + heater_length, 180, heater_height, -offset, 180, heater_height;
+   -220, offset, heater_height, -220, offset - heater_length, heater_height;
+   -180, -offset + heater_length, heater_height, -180, -offset, heater_height;
+];
+Ceramic = struct('name', 'Ceramic Coating', ...
+                 'color', [0.7 0.7 0.9], ...
+                 'reflectivity', 0.9, ...
+                 'emissivity', 0.2);
+n_segments = 40;
+theta = linspace(0, 2*pi, n_segments);
+Xc = heater_radius * cos(theta);
+Yc = heater_radius * sin(theta);
+for i = 1:size(heater_lines, 1)
+    p1 = heater_lines(i, 1:3);
+    p2 = heater_lines(i, 4:6);
+    v = p2 - p1;
+    len = norm(v);
+    v = v / len;
+    Zc = [zeros(1, n_segments); len * ones(1, n_segments)];
+    Xp = [Xc; Xc];
+    Yp = [Yc; Yc];
+
+    % Rotate and translate all cylinder points
+    z_axis = [0 0 1];
+    axis_rot = cross(z_axis, v);
+    if norm(axis_rot) < 1e-6
+        R = eye(3);
+    else
+        angle = acos(dot(z_axis, v));
+        axis_rot = axis_rot / norm(axis_rot);
+        R = axisAngleRotationMatrix(axis_rot, angle);
+    end
+
+    % Flatten for easier rotation
+    N = numel(Xp);
+    all_points = [Xp(:), Yp(:), Zc(:)];
+    rotated_points = (R * all_points')';
+    Xp = reshape(rotated_points(:,1), 2, []);
+    Yp = reshape(rotated_points(:,2), 2, []);
+    Zp = reshape(rotated_points(:,3), 2, []);
+
+    % Translate to p1
+    Xp = Xp + p1(1);
+    Yp = Yp + p1(2);
+    Zp = Zp + p1(3);
+
+    % Now decide which half faces +Z (i.e., upward)
+    normals = cross( ...
+        [diff(Xp); diff(Yp); diff(Zp)], ...
+        [zeros(1,n_segments); diff(Yp); diff(Zp)] ...
+    );
+    avg_Z = mean(Zp,1);
+    top_idx = avg_Z > mean(avg_Z);
+
+    % Draw ceramic-coated (top) part
+    surf(Xp(:, top_idx), Yp(:, top_idx), Zp(:, top_idx), ...
+         'FaceColor', Ceramic.color, 'EdgeColor', 'none', 'FaceAlpha', 0.99);  % 0.95
+
+    % Draw rest in red
+    bottom_idx = ~top_idx;
+    surf(Xp(:, bottom_idx), Yp(:, bottom_idx), Zp(:, bottom_idx), ...
+         'FaceColor', [1 0 0], 'EdgeColor', 'none', 'FaceAlpha', 0);  % 0.95
+end
+
+% Label heaters
+for i = 1:size(heater_lines, 1)
+    xc = mean([heater_lines(i,1), heater_lines(i,4)]);
+    yc = mean([heater_lines(i,2), heater_lines(i,5)]);
+    zc = mean([heater_lines(i,3), heater_lines(i,6)]);
+    label = ['H' num2str(i)];
+    text(xc, yc, zc + 20, label, 'FontSize', 9, 'Color', 'b', ...
+         'HorizontalAlignment', 'center');
+end
+
+%% Heater PWM and Power Assignment (using decimals from 0 to 1)
+PWM_frac = [0.1, 0.5, 0.1, 0.5, 0.1, 0.5, 0.1, 0.5];  % Each between 0 and 1
+max_power = 120;  % Max power per heater in Watts
+heater_power = PWM_frac * max_power;
+
+% % Display power labels on heaters
+% for i = 1:size(heater_lines, 1)
+%     xc = mean([heater_lines(i,1), heater_lines(i,4)]);
+%     yc = mean([heater_lines(i,2), heater_lines(i,5)]);
+%     zc = mean([heater_lines(i,3), heater_lines(i,6)]);
+% 
+%     str = sprintf('%.0f%% (%.1fW)', PWM_frac(i)*100, heater_power(i));
+%     text(xc, yc, zc + 50, str, 'FontSize', 8, 'Color', 'k', ...
+%          'HorizontalAlignment', 'center');
+% end
+
+%% --- Create Grid Over Powder Bed ---
+[xg, yg] = meshgrid(-250:10:250, -250:10:250);
+z_bed = zeros(size(xg));
+
+%% --- Angle-weighted heat flux computation (cosine law) ---
+heat_flux = zeros(size(xg));
+for i = 1:size(heater_lines,1)
+    % Use bottom midpoint of heater (quartz side)
+    p1 = heater_lines(i,1:3); p2 = heater_lines(i,4:6);
+    pos = mean([p1; p2], 1);
+    direction = (p2 - p1); direction = direction / norm(direction);
+
+    % Assume emission is directed downward
+    emission_dir = [0 0 -1];
+
+    % Vector from heater to bed points
+    vec_x = xg - pos(1);
+    vec_y = yg - pos(2);
+    vec_z = z_bed - pos(3);
+    dist3 = sqrt(vec_x.^2 + vec_y.^2 + vec_z.^2);
+    dot_prod = -(vec_z ./ dist3);  % cos(θ) with vertical emission %This is calculating cos(θ) — the cosine of the angle between the ray and the vertical direction.
+    dot_prod (dot_prod < 0) = 0;
+
+    % --- NEW: Approximate View Factor ---
+    VF =  dot_prod ./ (pi * dist3.^2 + 1e-6);  % Add small value to avoid div/0
+
+    % Updated flux with view factor
+    flux = heater_power(i) * VF;
+    heat_flux = heat_flux + flux;
+end
+    
+    heat_flux_norm = heat_flux / max(heat_flux(:));
+
+%% --- Plot Heat Flux Map ---
+figure;
+surf(xg, yg, z_bed, heat_flux_norm, 'EdgeColor', 'none');
+colorbar; view(2); axis equal tight;
+title('Normalized Heat Flux Distribution on Powder Bed');
+
+%% --- Temperature Rise with Radiative Absorption and Cooling ---
+% Material properties
+c = 1.69;           % Specific heat [J/g·°C]
+rho = 0.00102;      % Density [g/mm^3]
+depth = 2;          % Absorption depth [mm]
+time = 3600;        % Heating duration [sec]
+epsilon = 0.46;     % Emissivity of PA12
+sigma = 5.67e-14;   % Stefan-Boltzmann constant [W/mm^2·K^4]
+T0 = 30;           % Initial temperature [°C]
+Tamb = 25 + 273.15; % Ambient [K]
+
+% 1. Radiative absorption
+absorbed_flux = heat_flux * epsilon;  % Only a fraction absorbed % heat_flux * (1-epsilon) % otherwise it becomes perfect absorber.
+
+% 2. Radiative loss (using T0 as base temp for loss)
+T0_K = T0 + 273.15;
+q_loss = epsilon * sigma * (T0_K^4 - Tamb^4);  % W/mm²
+total_loss = q_loss * time;  % J/mm² lost over time
+
+% 3. Net energy gain per mm² (J/mm²)
+energy_input = absorbed_flux * time;   % J/mm²
+net_energy = energy_input - total_loss;
+
+% 4. Compute temp rise
+dT_map = net_energy / (rho * depth * c);
+dT_map(dT_map < 0) = 0;  % Clamp negatives
+
+% 5. Final absolute temperature
+T_abs = T0 + dT_map;
+
+% 6. Cap temperature to PA12 degradation limit
+T_abs(T_abs > 180) = 180;
+
+%% --- 2D Heat Conduction Simulation ---
+T_conduction = T_abs;
+dx = 10; dt = 0.5; time_total = 30; steps = round(time_total / dt);
+k = 0.00022; % W/mm-K
+alpha = k / (rho * c); r = alpha * dt / dx^2;
+for t = 1:steps
+    T_next = T_conduction;
+    for i = 2:size(T_conduction,1)-1
+        for j = 2:size(T_conduction,2)-1
+            T_next(i,j) = T_conduction(i,j) + r * ( ...
+                T_conduction(i+1,j) + T_conduction(i-1,j) + ...
+                T_conduction(i,j+1) + T_conduction(i,j-1) - ...
+                4 * T_conduction(i,j));
+        end
+    end
+    T_conduction = T_next;
+end
+
+%% --- Final Temperature Plots with Hotspot Annotations ---
+maxT = max(T_conduction(:));
+minT = min(T_conduction(:));
+[idx_max] = find(T_conduction == maxT, 1);
+[row_max, col_max] = ind2sub(size(T_conduction), idx_max);
+x_max = xg(row_max, col_max);
+y_max = yg(row_max, col_max);
+fprintf('🔥 Max Temperature: %.2f °C at (X,Y) = (%.1f, %.1f)\n', ...
+        maxT, x_max, y_max);
+fprintf('🌡️  Min Temperature: %.2f °C\n', minT);
+
+% 3D Surface Plot with Annotation
+figure;
+surf(xg, yg, T_conduction, 'EdgeColor', 'none');
+colormap hot; colorbar;
+title('Final Temperature Distribution with Conduction [°C]');
+xlabel('X [mm]'); ylabel('Y [mm]'); zlabel('Temperature [°C]');
+view(2); axis equal tight;
+
+% Annotate max point
+hold on;
+plot3(x_max, y_max, maxT, 'ko', 'MarkerSize', 10, 'LineWidth', 2);
+text(x_max, y_max, maxT + 2, ...
+     sprintf('Max: %.1f°C', maxT), ...
+     'Color', 'k', 'FontSize', 10, ...
+     'HorizontalAlignment', 'center', ...
+     'BackgroundColor', 'w');
+
+%% --- Contour Plot with Max Location ---
+figure;
+fprintf('Temperature range after conduction: %.2f°C to %.2f°C\n', ...
+        min(T_conduction(:)), max(T_conduction(:)));
+contourf(xg, yg, T_conduction, 20, 'LineColor', 'none');
+colormap hot; colorbar;
+title('Temperature Contours after Conduction');
+xlabel('X [mm]'); ylabel('Y [mm]'); axis equal tight;
+
+% Annotate max point
+hold on;
+plot(x_max, y_max, 'ko', 'MarkerSize', 8, 'LineWidth', 2);
+text(x_max, y_max, sprintf('%.1f°C', maxT), ...
+     'Color', 'k', 'FontSize', 10, ...
+     'HorizontalAlignment', 'center', ...
+     'BackgroundColor', 'w');
+
+% %% --- Interactive Click-Based Temperature Query ---
+% disp('🖱️ Click on the contour plot to get temperature at a point.');
+% [x_click, y_click] = ginput(1);
+% [~, ix] = min(abs(xg(1,:) - x_click));
+% [~, iy] = min(abs(yg(:,1) - y_click));
+% temp_click = T_conduction(iy, ix);
+% 
+% fprintf('📍 Clicked Position: X = %.1f, Y = %.1f\n', xg(iy,ix), yg(iy,ix));
+% fprintf('🌡️  Temperature at clicked location: %.2f °C\n', temp_click);
+%% --- Rotation helper ---
+function R = axisAngleRotationMatrix(axis, angle)
+    K = [0 -axis(3) axis(2); axis(3) 0 -axis(1); -axis(2) axis(1) 0];
+    R = eye(3) + sin(angle)*K + (1 - cos(angle))*(K*K);
+end
