@@ -1,4 +1,4 @@
-### Tes1_2_Results and Description of the work
+### Test_2_Results and Description of the work
 
 ### Tools USed
 + Matlab
