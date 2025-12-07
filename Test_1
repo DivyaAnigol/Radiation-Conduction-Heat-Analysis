@@ -1,0 +1,238 @@
+%RT4(111b) Radiation + Conduction.
+
+clc; clear; close all;
+
+% Chamber dimensions
+L = -250:250;
+W = -250:250;
+H = 500;
+
+%% Material Properties
+PA12 = struct('name', 'PA12 Powder', ...
+              'color', [0.6 0.6 0.6], ...
+              'reflectivity', 0.05, ...
+              'emissivity', 0.46);
+SS = struct('name', 'Polished Stainless Steel', ...
+            'color', [0.8 0.8 0.8], ...
+            'reflectivity', 0.85, ...
+            'emissivity', 0.15);
+
+%% Chamber Cube
+corners = [
+    -250 -250 0;
+     250 -250 0;
+     250  250 0;
+    -250  250 0;
+    -250 -250 500;
+     250 -250 500;
+     250  250 500;
+    -250  250 500
+];
+faces = {
+    struct('verts', [1 2 3 4], 'material', PA12);
+    struct('verts', [1 2 6 5], 'material', SS);
+    struct('verts', [2 3 7 6], 'material', SS);
+    struct('verts', [3 4 8 7], 'material', SS);
+    struct('verts', [4 1 5 8], 'material', SS);
+};
+figure; hold on; axis equal;
+xlabel('X'); ylabel('Y'); zlabel('Z');
+title('3D Chamber with Cylindrical IR Heaters');
+view(3); grid on;
+for i = 1:length(faces)
+    f = faces{i};
+    patch('Vertices', corners, 'Faces', f.verts, ...
+          'FaceColor', f.material.color, ...
+          'FaceAlpha', 1, 'EdgeColor', 'k');
+end
+
+%% Top frame with central pocket
+top_strips = {
+    [-250 250 250 -250], [-250 -250 -150 -150];
+    [-250 250 250 -250], [150 150 250 250];
+    [-250 -150 -150 -250], [-250 -250 250 250];
+    [150 250 250 150], [-250 -250 250 250];
+};
+for i = 1:length(top_strips)
+    x = top_strips{i,1};
+    y = top_strips{i,2};
+    patch(x, y, H * ones(1, 4), SS.color, ...
+          'FaceAlpha', 0, 'EdgeColor', 'k');
+end
+line([-150, 150, 150, 150, -150, -150], [-150, -150, -150, 150, 150, -150], ...
+     H * ones(1, 6), 'Color', 'b', 'LineWidth', 1.5, 'LineStyle', '--');
+
+%% IR Heaters (cylindrical, half ceramic-coated)
+heater_radius = 6;
+heater_height = H - 15;
+heater_length = 150;
+offset = 100;
+heater_lines = [
+    -offset, -220, heater_height, -offset + heater_length, -220, heater_height;
+    offset - heater_length, -180, heater_height,  offset, -180, heater_height;
+    220, -offset, heater_height, 220, -offset + heater_length, heater_height;
+    180, offset - heater_length, heater_height, 180, offset, heater_height;
+    offset, 220, heater_height,  offset - heater_length, 220, heater_height;
+    -offset + heater_length, 180, heater_height, -offset, 180, heater_height;
+   -220, offset, heater_height, -220, offset - heater_length, heater_height;
+   -180, -offset + heater_length, heater_height, -180, -offset, heater_height;
+];
+Ceramic = struct('name', 'Ceramic Coating', ...
+                 'color', [0.7 0.7 0.9], ...
+                 'reflectivity', 0.9, ...
+                 'emissivity', 0.2);
+n_segments = 40;
+theta = linspace(0, 2*pi, n_segments);
+Xc = heater_radius * cos(theta);
+Yc = heater_radius * sin(theta);
+for i = 1:size(heater_lines, 1)
+    p1 = heater_lines(i, 1:3);
+    p2 = heater_lines(i, 4:6);
+    v = p2 - p1;
+    len = norm(v);
+    v = v / len;
+    Zc = [zeros(1, n_segments); len * ones(1, n_segments)];
+    Xp = [Xc; Xc];
+    Yp = [Yc; Yc];
+    % Rotate and translate all cylinder points
+    z_axis = [0 0 1];
+    axis_rot = cross(z_axis, v);
+    if norm(axis_rot) < 1e-6
+        R = eye(3);
+    else
+        angle = acos(dot(z_axis, v));
+        axis_rot = axis_rot / norm(axis_rot);
+        R = axisAngleRotationMatrix(axis_rot, angle);
+    end
+
+    % Flatten for easier rotation
+    N = numel(Xp);
+    all_points = [Xp(:), Yp(:), Zc(:)];
+    rotated_points = (R * all_points')';
+    Xp = reshape(rotated_points(:,1), 2, []);
+    Yp = reshape(rotated_points(:,2), 2, []);
+    Zp = reshape(rotated_points(:,3), 2, []);
+
+    % Translate to p1
+    Xp = Xp + p1(1);
+    Yp = Yp + p1(2);
+    Zp = Zp + p1(3);
+
+    % Now decide which half faces +Z (i.e., upward)
+    normals = cross( ...
+        [diff(Xp); diff(Yp); diff(Zp)], ...
+        [zeros(1,n_segments); diff(Yp); diff(Zp)] ...
+    );
+    avg_Z = mean(Zp,1);
+    top_idx = avg_Z > mean(avg_Z);
+
+    % Draw ceramic-coated (top) part
+    surf(Xp(:, top_idx), Yp(:, top_idx), Zp(:, top_idx), ...
+         'FaceColor', Ceramic.color, 'EdgeColor', 'none', 'FaceAlpha', 0.95);
+
+    % Draw rest in red
+    bottom_idx = ~top_idx;
+    surf(Xp(:, bottom_idx), Yp(:, bottom_idx), Zp(:, bottom_idx), ...
+         'FaceColor', [1 0 0], 'EdgeColor', 'none', 'FaceAlpha', 0.95);
+end
+
+% Label heaters
+for i = 1:size(heater_lines, 1)
+    xc = mean([heater_lines(i,1), heater_lines(i,4)]);
+    yc = mean([heater_lines(i,2), heater_lines(i,5)]);
+    zc = mean([heater_lines(i,3), heater_lines(i,6)]);
+    label = ['H' num2str(i)];
+    text(xc, yc, zc + 20, label, 'FontSize', 9, 'Color', 'b', ...
+         'HorizontalAlignment', 'center');
+end
+
+%% Heater PWM and Power Assignment (using decimals from 0 to 1)
+PWM_frac = [1.0, 0.75, 0.5, 0.25, 0.0, 0.5, 0.75, 1.0];  % Each between 0 and 1
+max_power = 120;  % Max power per heater in Watts
+heater_power = PWM_frac * max_power;
+
+% % Display power labels on heaters
+% for i = 1:size(heater_lines, 1)
+%     xc = mean([heater_lines(i,1), heater_lines(i,4)]);
+%     yc = mean([heater_lines(i,2), heater_lines(i,5)]);
+%     zc = mean([heater_lines(i,3), heater_lines(i,6)]);
+% 
+%     str = sprintf('%.0f%% (%.1fW)', PWM_frac(i)*100, heater_power(i));
+%     text(xc, yc, zc + 50, str, 'FontSize', 8, 'Color', 'k', ...
+%          'HorizontalAlignment', 'center');
+% end
+
+%% --- Create Grid Over Powder Bed ---
+[xg, yg] = meshgrid(-250:10:250, -250:10:250);
+z_bed = zeros(size(xg));
+
+%% --- Angle-weighted heat flux computation (cosine law) ---
+heat_flux = zeros(size(xg));
+for i = 1:size(heater_lines,1)
+    % Use bottom midpoint of heater (quartz side)
+    p1 = heater_lines(i,1:3); p2 = heater_lines(i,4:6);
+    pos = mean([p1; p2], 1);
+    direction = (p2 - p1); direction = direction / norm(direction);
+
+    % Assume emission is directed downward
+    emission_dir = [0 0 -1];
+
+    % Vector from heater to bed points
+    vec_x = xg - pos(1);
+    vec_y = yg - pos(2);
+    vec_z = z_bed - pos(3);
+    dist3 = sqrt(vec_x.^2 + vec_y.^2 + vec_z.^2);
+    dot_prod = -(vec_z ./ dist3);  % cos(θ) with vertical emission
+
+    % Apply cosine law and distance^2 drop-off
+    flux = heater_power(i) * dot_prod ./ (dist3.^2 + 1);
+    flux(dot_prod < 0) = 0;  % Ignore rays going upward
+    heat_flux = heat_flux + flux;
+end
+heat_flux_norm = heat_flux / max(heat_flux(:));
+
+%% --- Plot Heat Flux Map ---
+figure;
+surf(xg, yg, z_bed, heat_flux_norm, 'EdgeColor', 'none');
+colorbar; view(2); axis equal tight;
+title('Normalized Heat Flux Distribution on Powder Bed');
+
+%% --- Temperature Rise from Radiative Heat Flux ---
+c = 1700; rho = 1020; depth = 0.002; time = 5;
+dT_map = heat_flux * time / (rho * depth * c);
+T0 = 100; T_abs = T0 + dT_map;
+
+%% --- 2D Heat Conduction Simulation ---
+T_conduction = T_abs;
+dx = 10e-3; dt = 0.5; time_total = 30; steps = round(time_total / dt);
+k = 0.25; alpha = k / (rho * c); r = alpha * dt / dx^2;
+for t = 1:steps
+    T_next = T_conduction;
+    for i = 2:size(T_conduction,1)-1
+        for j = 2:size(T_conduction,2)-1
+            T_next(i,j) = T_conduction(i,j) + r * ( ...
+                T_conduction(i+1,j) + T_conduction(i-1,j) + ...
+                T_conduction(i,j+1) + T_conduction(i,j-1) - ...
+                4 * T_conduction(i,j));
+        end
+    end
+    T_conduction = T_next;
+end
+
+%% --- Final Temperature Plots ---
+figure;
+surf(xg, yg, T_conduction, 'EdgeColor', 'none');
+colormap hot; colorbar;
+title('Final Temperature Distribution with Conduction [°C]');
+xlabel('X [mm]'); ylabel('Y [mm]'); view(2); axis equal tight;
+figure;
+contourf(xg, yg, T_conduction, 20, 'LineColor', 'none');
+colormap hot; colorbar;
+title('Temperature Contours after Conduction');
+xlabel('X [mm]'); ylabel('Y [mm]'); axis equal tight;
+
+%% --- Rotation helper ---
+function R = axisAngleRotationMatrix(axis, angle)
+    K = [0 -axis(3) axis(2); axis(3) 0 -axis(1); -axis(2) axis(1) 0];
+    R = eye(3) + sin(angle)*K + (1 - cos(angle))*(K*K);
+end
