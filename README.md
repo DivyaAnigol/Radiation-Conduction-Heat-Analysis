@@ -2,15 +2,15 @@
 A MATLAB implementation focused on designing and analysing heater configurations for thermal processing. The code integrates geometric modelling, angle-weighted radiative flux computation, and conduction-based temperature evolution to evaluate thermal uniformity within a chamber environment.
 
 ## Technical Content
-This application is developed in the context of Selective Laser Sintering (SLS) 3D printing, where accurate control of heat flux and temperature distribution on the powder bed is critical for achieving uniform sintering during subsequent laser exposure. The model focuses on understanding preheating behavior and thermal uniformity of the powder bed, which directly influence laser-material interaction, part quality, and process stability.
 
 **AIM:** Analysis of radiative and conductive heat transfer from the IR heaters on the bed in a defined system.
+
+This study presents a computational model of radiative and conductive heat transfer in a closed infrared-heated chamber relevant to Selective Laser Sintering (SLS) additive manufacturing. The model evaluates angle-dependent radiative heat flux from cylindrical IR heaters, energy absorption within the powder bed, and subsequent temperature redistribution via two-dimensional heat conduction. The results provide insight into powder bed preheating behavior, thermal gradients, and their influence on laser interaction, part quality, and process stability.
 
 **TOOL USED:** MATLAB
 
 **CODE & LOGIC:**
 
-**Overview:** This script models radiative and conductive heat transfer inside a closed thermal processing chamber equipped with cylindrical infrared (IR) heaters. The simulation computes angle-weighted radiative heat flux on a powder bed, converts absorbed energy into temperature rise, and applies 2D heat conduction to predict final temperature distribution.
 
 **1. Material Properties - Radiative Physics:** The chamber is defined as a rectangular enclosure using polygonal faces with assigned material properties. PA12 powder is modeled with higher emissivity to represent radiative absorption, while polished stainless steel walls are modeled with high reflectivity to account for radiation confinement.
 ```
