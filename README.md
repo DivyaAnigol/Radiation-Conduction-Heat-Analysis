@@ -1,6 +1,6 @@
-### Tes1_1_Results and Description of the work
+### Test_1_Results and Description of the work
 
-### Tools USed
+### Tools Used
 + Matlab
 
 ### Results
